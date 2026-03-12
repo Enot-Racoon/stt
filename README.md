@@ -1,4 +1,4 @@
-# speech-stt
+# Speech-to-text browser library
 
 A browser speech-to-text library built with TypeScript and Bun.
 
