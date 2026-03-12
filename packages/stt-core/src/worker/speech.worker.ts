@@ -1,47 +1,67 @@
 import type { WorkerRequest, WorkerResponse } from '../types/WorkerProtocol';
+import type { SpeechAdapter } from '../adapter/SpeechAdapter';
 
 /**
  * Speech worker for handling speech recognition tasks.
  *
  * This worker runs in a separate thread and handles:
- * - Model initialization
- * - Audio transcription
+ * - Model initialization using transformers.js
+ * - Audio transcription using Whisper
  * - Cleanup
  *
  * Communication uses the WorkerProtocol message format.
  */
 
 /**
+ * Single adapter instance for the worker.
+ * Reused across multiple transcription requests.
+ */
+let adapter: SpeechAdapter | null = null;
+
+/**
  * Handle incoming messages from the main thread.
  */
-self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const message = event.data;
 
-  switch (message.type) {
-    case 'INIT_MODEL':
-      handleInitModel(message);
-      break;
+  try {
+    switch (message.type) {
+      case 'INIT_MODEL':
+        await handleInitModel(message);
+        break;
 
-    case 'TRANSCRIBE':
-      handleTranscribe(message);
-      break;
+      case 'TRANSCRIBE':
+        await handleTranscribe(message);
+        break;
 
-    case 'DESTROY':
-      handleDestroy();
-      break;
+      case 'DESTROY':
+        await handleDestroy();
+        break;
 
-    default:
-      sendError(`Unknown message type: ${(message as { type: string }).type}`);
+      default:
+        sendError(`Unknown message type: ${(message as { type: string }).type}`);
+    }
+  } catch (error) {
+    sendError(error instanceof Error ? error.message : 'Unknown error');
   }
 };
 
 /**
  * Handle INIT_MODEL request.
- * Initializes the speech recognition model.
+ * Initializes the TransformersAdapter with the specified model.
  */
-function handleInitModel(_message: { type: 'INIT_MODEL'; payload: unknown }): void {
-  // TODO: Implement actual model initialization
-  // For now, respond with success immediately
+async function handleInitModel(message: { type: 'INIT_MODEL'; payload: unknown }): Promise<void> {
+  if (adapter) {
+    await adapter.destroy();
+  }
+
+  // Dynamically import the adapter to avoid bundling issues
+  const { TransformersAdapter } = await import('../adapter/TransformersAdapter');
+  adapter = new TransformersAdapter();
+
+  const options = message.payload as { model?: 'whisper-tiny' | 'whisper-base'; language?: string };
+  await adapter.init(options);
+
   const response: WorkerResponse = {
     type: 'MODEL_READY',
     payload: { success: true },
@@ -51,28 +71,36 @@ function handleInitModel(_message: { type: 'INIT_MODEL'; payload: unknown }): vo
 
 /**
  * Handle TRANSCRIBE request.
- * Transcribes audio data to text.
+ * Transcribes audio data using the initialized adapter.
  */
-function handleTranscribe(_message: { type: 'TRANSCRIBE'; payload: Blob }): void {
-  // TODO: Implement actual transcription
-  // For now, return dummy transcription result
-  const response: WorkerResponse = {
-    type: 'RESULT',
-    payload: {
-      text: 'dummy transcription',
-      confidence: 1.0,
-      language: 'en',
-    },
-  };
-  self.postMessage(response);
+async function handleTranscribe(message: { type: 'TRANSCRIBE'; payload: Blob }): Promise<void> {
+  if (!adapter) {
+    sendError('Adapter not initialized. Call INIT_MODEL first.');
+    return;
+  }
+
+  try {
+    const result = await adapter.transcribe(message.payload);
+
+    const response: WorkerResponse = {
+      type: 'RESULT',
+      payload: result,
+    };
+    self.postMessage(response);
+  } catch (error) {
+    sendError(error instanceof Error ? error.message : 'Transcription failed');
+  }
 }
 
 /**
  * Handle DESTROY request.
  * Cleans up resources and closes the worker.
  */
-function handleDestroy(): void {
-  // TODO: Implement cleanup if needed
+async function handleDestroy(): Promise<void> {
+  if (adapter) {
+    await adapter.destroy();
+    adapter = null;
+  }
   self.close();
 }
 
