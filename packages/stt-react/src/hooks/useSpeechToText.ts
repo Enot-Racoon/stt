@@ -1,6 +1,6 @@
 // TODO: Implement useSpeechToText hook
 import { useState, useCallback } from "react";
-import type { SpeechConfig, SpeechRecognitionResult } from "stt-core";
+import type { SpeechConfig, SpeechRecognitionResult } from "@toolcode/stt-core";
 
 export interface UseSpeechToTextReturn {
   isListening: boolean;
