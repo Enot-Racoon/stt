@@ -1,0 +1,19 @@
+{
+  "name": "examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run basic.ts"
+  },
+  "dependencies": {
+    "@toolcode/stt-core": "workspace:*",
+    "@toolcode/stt-react": "workspace:*",
+    "@toolcode/stt-ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
